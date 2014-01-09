@@ -123,26 +123,26 @@ static void ipu_set_resize_coef(struct ipu *ipu,
 }
 
 static void ipu_set_resize_params(struct ipu *ipu,
-			unsigned int srcX, unsigned int srcY,
-			unsigned int dstX, unsigned int dstY,
+			unsigned int srcW, unsigned int srcH,
+			unsigned int dstW, unsigned int dstH,
 			unsigned int bytes_per_pixel)
 {
-	int upscaleW = (dstX >= srcX), upscaleH = (dstY >= srcY);
+	int upscaleW = (dstW >= srcW), upscaleH = (dstH >= srcH);
 	const struct mn *mnW, *mnH;
 
 	write_reg(ipu, REG_RSZ_COEF_INDEX, (31 << 16) | 31);
 
-	if (srcX == dstX) {
+	if (srcW == dstW) {
 		mnW = &ipu_ratio_table[0];
 	} else {
-		float ratio = (float) (dstX - 1 - upscaleW) / (float) (srcX - 1);
+		float ratio = (float) (dstW - 1 - upscaleW) / (float) (srcW - 1);
 		mnW = find_mn(ratio);
 	}
 
-	if (srcY == dstY) {
+	if (srcH == dstH) {
 		mnH = &ipu_ratio_table[0];
 	} else {
-		float ratio = (float) (dstY - 1 - upscaleH) / (float) (srcY - 1);
+		float ratio = (float) (dstH - 1 - upscaleH) / (float) (srcH - 1);
 		mnH = find_mn(ratio);
 	}
 
@@ -150,27 +150,27 @@ static void ipu_set_resize_params(struct ipu *ipu,
 	ipu_set_resize_coef(ipu, mnW, REG_HRSZ_COEF_LUT);
 	ipu_set_resize_coef(ipu, mnH, REG_VRSZ_COEF_LUT);
 
-	/* Calculate valid X/Y parameters */
-	dstX = calc_size(srcX, mnW, upscaleW);
-	dstY = calc_size(srcY, mnH, upscaleH);
-	printf("New output size: %ux%u\n", dstX, dstY);
+	/* Calculate valid W/H parameters */
+	dstW = calc_size(srcW, mnW, upscaleW);
+	dstH = calc_size(srcH, mnH, upscaleH);
+	printf("New output size: %ux%u\n", dstW, dstH);
 
 	/* Set the input/output height/width */
 	write_reg(ipu, REG_IN_FM_GS,
-				((srcX * bytes_per_pixel) << IN_FM_W_SFT)
-				| (srcY << IN_FM_H_SFT));
+				((srcW * bytes_per_pixel) << IN_FM_W_SFT)
+				| (srcH << IN_FM_H_SFT));
 	write_reg(ipu, REG_OUT_GS,
-				((dstX * bytes_per_pixel) << IN_FM_W_SFT)
-				| (dstY << IN_FM_H_SFT));
+				((dstW * bytes_per_pixel) << IN_FM_W_SFT)
+				| (dstH << IN_FM_H_SFT));
 
 	/* Set the input/output stride */
-	write_reg(ipu, REG_Y_STRIDE, srcX * bytes_per_pixel);
-	write_reg(ipu, REG_OUT_STRIDE, dstX * bytes_per_pixel);
+	write_reg(ipu, REG_Y_STRIDE, srcW * bytes_per_pixel);
+	write_reg(ipu, REG_OUT_STRIDE, dstW * bytes_per_pixel);
 }
 
 static void ipu_reset(struct ipu *ipu,
-			unsigned int srcX, unsigned int srcY,
-			unsigned int dstX, unsigned int dstY)
+			unsigned int srcW, unsigned int srcH,
+			unsigned int dstW, unsigned int dstH)
 {
 	ipu_stop(ipu, 0);
 
@@ -186,7 +186,7 @@ static void ipu_reset(struct ipu *ipu,
 
 	printf("Setting the resize params...\n");
 	/* Set the resize params */
-	ipu_set_resize_params(ipu, srcX, srcY, dstX, dstY, 4);
+	ipu_set_resize_params(ipu, srcW, srcH, dstW, dstH, 4);
 }
 
 static void ipu_run(struct ipu *ipu)
