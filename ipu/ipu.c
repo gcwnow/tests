@@ -81,7 +81,7 @@ static const struct mn *find_mn(float ratio)
 		}
 	}
 
-	printf("M/N found for ratio %f: %u/%u, idx=%u\n",
+	printf("N/M found for ratio %f: %u/%u, idx=%u\n",
 				ratio, ipu_ratio_table[idx].n, ipu_ratio_table[idx].m, idx);
 	return &ipu_ratio_table[idx];
 }
