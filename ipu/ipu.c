@@ -224,7 +224,7 @@ static void ipu_control_clock(struct ipu *ipu, int enable)
 	if (enable)
 		ipu_stop(ipu, 1);
 
-	void *addr = mmap(NULL, 0x1000, PROT_READ | PROT_WRITE,
+	void *addr = mmap(NULL, 0x100, PROT_READ | PROT_WRITE,
 				MAP_SHARED, ipu->dev_mem_fd, JZ4770_CPM_BASE_ADDR);
 	if (!addr) {
 		fprintf(stderr, "Unable to mmap register clkgr0\n");
@@ -234,7 +234,7 @@ static void ipu_control_clock(struct ipu *ipu, int enable)
 			*ptr &= ~CLKGR0_IPU;
 		else
 			*ptr |= CLKGR0_IPU;
-		munmap(ptr, 0x4);
+		munmap(addr, 0x100);
 	}
 
 	/* Sleep a bit to be sure that the clock is ready */
