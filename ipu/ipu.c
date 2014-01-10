@@ -4,6 +4,7 @@
 #include <fcntl.h>
 #include <math.h>
 #include <signal.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -189,7 +190,7 @@ static void ipu_set_resize_params(struct ipu *ipu,
 
 static void ipu_reset(struct ipu *ipu,
 			unsigned int srcW, unsigned int srcH,
-			unsigned int dstW, unsigned int dstH)
+			unsigned int dstW, unsigned int dstH, bool swap)
 {
 	ipu_stop(ipu, 0);
 
@@ -200,8 +201,13 @@ static void ipu_reset(struct ipu *ipu,
 	write_reg(ipu, REG_D_FMT, (2 << OUT_FMT_SFT) | (2 << IN_FMT_SFT));
 
 	/* Set the input/output addresses */
-	write_reg(ipu, REG_Y_ADDR, (uint32_t) ipu->fb);
-	write_reg(ipu, REG_OUT_ADDR, ipu->fb + 320 * 240 * 4);
+	if (swap) {
+		write_reg(ipu, REG_Y_ADDR, ipu->fb + 320 * 240 * 4);
+		write_reg(ipu, REG_OUT_ADDR, (uint32_t) ipu->fb);
+	} else {
+		write_reg(ipu, REG_Y_ADDR, (uint32_t) ipu->fb);
+		write_reg(ipu, REG_OUT_ADDR, ipu->fb + 320 * 240 * 4);
+	}
 
 	printf("Setting the resize params...\n");
 	/* Set the resize params */
@@ -238,12 +244,12 @@ static void ipu_control_clock(struct ipu *ipu, int enable)
 #define ipu_enable_clock(ipu) ipu_control_clock(ipu, 1)
 #define ipu_disable_clock(ipu) ipu_control_clock(ipu, 0)
 
-static void ipu_run_test(struct ipu *ipu)
+static void ipu_run_test(struct ipu *ipu, bool swap)
 {
 	printf("Enabling clock...\n");
 	ipu_enable_clock(ipu);
 	printf("Clock enabled. Reseting IPU...\n");
-	ipu_reset(ipu, 320, 144, 320, 240);
+	ipu_reset(ipu, 320, 144, 320, 240, swap);
 	printf("IPU reseted. Running IPU...\n");
 	ipu_run(ipu);
 	printf("IPU should be running now. Waiting for EOF status bit...\n");
@@ -287,9 +293,16 @@ int main(void)
 		return EXIT_FAILURE;
 	}
 
-	struct  fb_fix_screeninfo fbinfo;
+	struct fb_fix_screeninfo fbinfo;
+	struct fb_var_screeninfo varinfo;
 	if (ioctl(fd, FBIOGET_FSCREENINFO, &fbinfo) < 0) {
 		fprintf(stderr, "get fixed screen info failed\n");
+		close(fd);
+		return EXIT_FAILURE;
+	}
+
+	if (ioctl(fd, FBIOGET_VSCREENINFO, &varinfo) < 0) {
+		fprintf(stderr, "get var screen info failed\n");
 		close(fd);
 		return EXIT_FAILURE;
 	}
@@ -324,7 +337,7 @@ int main(void)
 
 	printf("Framebuffer physical address: 0x%lx\n", fbinfo.smem_start);
 
-	ipu_run_test(ipu);
+	ipu_run_test(ipu, !varinfo.yoffset);
 	quit_all(EXIT_SUCCESS);
 
 	return 0;
