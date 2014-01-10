@@ -22,21 +22,25 @@ struct ipu {
 
 static struct ipu *ipu;
 
-static uint32_t read_reg(struct ipu *ipu, unsigned int reg)
+static inline uint32_t read_reg(struct ipu *ipu, unsigned int reg)
 {
-	return *(uint32_t *) (ipu->base + reg);
+	return *(volatile uint32_t *) (ipu->base + reg);
 }
 
-static void write_reg(struct ipu *ipu, unsigned int reg, uint32_t value)
+static inline void write_reg(struct ipu *ipu, unsigned int reg, uint32_t value)
 {
-	*(uint32_t *) (ipu->base + reg) = value;
+	*(volatile uint32_t *) (ipu->base + reg) = value;
 }
 
-#define set_bit(ipu, reg, bit) \
-  write_reg(ipu, reg, read_reg(ipu, reg) | (bit))
+static inline void set_bit(struct ipu *ipu, unsigned int reg, uint32_t mask)
+{
+	write_reg(ipu, reg, read_reg(ipu, reg) | mask);
+}
 
-#define clr_bit(ipu, reg, bit) \
-  write_reg(ipu, reg, read_reg(ipu, reg) & ~(bit))
+static inline void clr_bit(struct ipu *ipu, unsigned int reg, uint32_t mask)
+{
+	write_reg(ipu, reg, read_reg(ipu, reg) & ~mask);
+}
 
 static void print_regs(struct ipu *ipu)
 {
