@@ -1,5 +1,6 @@
 TARGET := ipu
 CFLAGS := -Wall -O2
+LDFLAGS := -lm
 
 CROSS_COMPILE ?= mipsel-gcw0-linux-uclibc-
 CC := $(CROSS_COMPILE)gcc

@@ -2,6 +2,7 @@
 #include "ratios.h"
 
 #include <fcntl.h>
+#include <math.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -93,32 +94,41 @@ static unsigned int calc_size(unsigned int src, const struct mn *mn)
 	return size + (tmp != (float) (src - 1)) + (mn->m >= mn->n);
 }
 
-/* XXX: This does not work. */
+/* XXX: Works good with some values but bad with others :/ */
+static void ipu_set_upscale_bilinear_coef(struct ipu *ipu,
+			const struct mn *mn, unsigned int reg)
+{
+	unsigned int i, t, prev = 0;
+	for (i = 0, t = 0; i < mn->m; i++) {
+		float ni_m = (float) (mn->n * i) / (float) mn->m;
+		float weight = 1.0f - ni_m + floorf(ni_m);
+		int coef = roundf(512.0f * weight);
+		int offset = (i == mn->m - 1) ? 1 : prev;
+
+		if (t <= (unsigned int) ni_m) {
+			prev = 1;
+			t++;
+		} else {
+			prev = 0;
+		}
+
+		unsigned int value = ((coef & 0x7ff) << 6) | (offset << 1) | (i == 0);
+		printf("i=%u, t=%u, offset=%u, in=%u, coef=%i, register value 0x%x\n",
+					i, t, offset, prev, coef, value);
+
+		write_reg(ipu, reg, value);
+		usleep(1); /* a small sleep seems necessary */
+	}
+}
+
 static void ipu_set_resize_coef(struct ipu *ipu,
 			const struct mn *mn, unsigned int reg)
 {
-	float ratio = (float) mn->m / (float) mn->n;
-	unsigned int coef_raw[32];
-    const float fixpoint_lut_coef = 512.0;
-	unsigned int i, t, value;
-
-	write_reg(ipu, reg, 1);
-	coef_raw[0] = fixpoint_lut_coef;
-
-	for (i = 1, t = 1; i < mn->m; i++) {
-		float factor = (float) i * ratio;
-		factor -= (int) factor;
-		float w_coef = 1.0 - factor;
-		coef_raw[i] = (unsigned int) (fixpoint_lut_coef * w_coef);
-
-		value = (coef_raw[i - 1] << 6) | ((t++ <= factor) << 1);
-		printf("Writing value idx %i: %u\n", i - 1, value);
-		write_reg(ipu, reg, value);
+	/* Only bilinear for now */
+	/* Only upscale for now */
+	if (mn->m >= mn->n) {
+		ipu_set_upscale_bilinear_coef(ipu, mn, reg);
 	}
-
-	value = (coef_raw[i - 1] << 6) | 2;
-	write_reg(ipu, reg, value);
-	printf("Writing value idx %i: %u\n", i - 1, value);
 }
 
 static void ipu_set_resize_params(struct ipu *ipu,
@@ -227,7 +237,7 @@ static void ipu_run_test(struct ipu *ipu)
 	printf("Enabling clock...\n");
 	ipu_enable_clock(ipu);
 	printf("Clock enabled. Reseting IPU...\n");
-	ipu_reset(ipu, 320, 240, 320, 120);
+	ipu_reset(ipu, 320, 144, 320, 240);
 	printf("IPU reseted. Running IPU...\n");
 	ipu_run(ipu);
 	printf("IPU should be running now. Waiting for EOF status bit...\n");
