@@ -127,24 +127,34 @@ static void ipu_set_resize_params(struct ipu *ipu,
 			unsigned int bytes_per_pixel)
 {
 	const struct mn *mnW, *mnH;
-
-	write_reg(ipu, REG_RSZ_COEF_INDEX, (31 << 16) | 31);
+	uint32_t coef_index = 0;
 
 	if (srcW == dstW) {
 		mnW = &ipu_ratio_table[0];
 	} else {
 		mnW = find_mn((float) dstW / (float) srcW);
+
+		/* Set the resize coefficients */
+		ipu_set_resize_coef(ipu, mnW, REG_HRSZ_COEF_LUT);
+		coef_index = ((((mnW->m >= mnW->n) ? mnW->m : mnW->n) - 1) << 16);
+
+		set_bit(ipu, REG_CTRL, IPU_CTRL_HRSZ_EN);
 	}
 
 	if (srcH == dstH) {
 		mnH = &ipu_ratio_table[0];
 	} else {
 		mnH = find_mn((float) dstH / (float) srcH);
+
+		/* Set the resize coefficients */
+		ipu_set_resize_coef(ipu, mnH, REG_VRSZ_COEF_LUT);
+		coef_index |= ((mnW->m >= mnW->n) ? mnH->m : mnH->n) - 1;
+
+		set_bit(ipu, REG_CTRL, IPU_CTRL_VRSZ_EN);
 	}
 
-	/* Set the resize coefficients */
-	ipu_set_resize_coef(ipu, mnW, REG_HRSZ_COEF_LUT);
-	ipu_set_resize_coef(ipu, mnH, REG_VRSZ_COEF_LUT);
+	/* Set the LUT index register */
+	write_reg(ipu, REG_RSZ_COEF_INDEX, coef_index);
 
 	/* Calculate valid W/H parameters */
 	dstW = calc_size(srcW, mnW);
