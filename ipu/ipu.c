@@ -62,9 +62,8 @@ static void ipu_stop(struct ipu *ipu, int force)
 		}
 	}
 
-	write_reg(ipu, REG_CTRL, 0);
 	write_reg(ipu, REG_STATUS, 0);
-	set_bit(ipu, REG_CTRL, IPU_CTRL_RST);
+	write_reg(ipu, REG_CTRL, IPU_CTRL_RST);
 }
 
 static const struct mn *find_mn(float ratio)
@@ -227,6 +226,9 @@ static void ipu_control_clock(struct ipu *ipu, int enable)
 			*ptr |= CLKGR0_IPU;
 		munmap(ptr, 0x4);
 	}
+
+	/* Sleep a bit to be sure that the clock is ready */
+	usleep(4000);
 }
 
 #define ipu_enable_clock(ipu) ipu_control_clock(ipu, 1)
