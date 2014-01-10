@@ -126,7 +126,6 @@ static void ipu_set_resize_params(struct ipu *ipu,
 			unsigned int dstW, unsigned int dstH,
 			unsigned int bytes_per_pixel)
 {
-	int upscaleW = (dstW >= srcW), upscaleH = (dstH >= srcH);
 	const struct mn *mnW, *mnH;
 
 	write_reg(ipu, REG_RSZ_COEF_INDEX, (31 << 16) | 31);
@@ -134,15 +133,13 @@ static void ipu_set_resize_params(struct ipu *ipu,
 	if (srcW == dstW) {
 		mnW = &ipu_ratio_table[0];
 	} else {
-		float ratio = (float) (dstW - 1 - upscaleW) / (float) (srcW - 1);
-		mnW = find_mn(ratio);
+		mnW = find_mn((float) dstW / (float) srcW);
 	}
 
 	if (srcH == dstH) {
 		mnH = &ipu_ratio_table[0];
 	} else {
-		float ratio = (float) (dstH - 1 - upscaleH) / (float) (srcH - 1);
-		mnH = find_mn(ratio);
+		mnH = find_mn((float) dstH / (float) srcH);
 	}
 
 	/* Set the resize coefficients */
