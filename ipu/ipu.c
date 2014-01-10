@@ -86,12 +86,11 @@ static const struct mn *find_mn(float ratio)
 	return &ipu_ratio_table[idx];
 }
 
-static unsigned int calc_size(unsigned int src,
-			const struct mn *mn, int upscale)
+static unsigned int calc_size(unsigned int src, const struct mn *mn)
 {
 	unsigned int size = (float) ((src - 1) * mn->m) / (float) mn->n;
 	float tmp = (float) (size * mn->n) / (float) mn->m;
-	return size + (tmp != (float) (src - 1)) + !!upscale;
+	return size + (tmp != (float) (src - 1)) + (mn->m >= mn->n);
 }
 
 /* XXX: This does not work. */
@@ -151,8 +150,8 @@ static void ipu_set_resize_params(struct ipu *ipu,
 	ipu_set_resize_coef(ipu, mnH, REG_VRSZ_COEF_LUT);
 
 	/* Calculate valid W/H parameters */
-	dstW = calc_size(srcW, mnW, upscaleW);
-	dstH = calc_size(srcH, mnH, upscaleH);
+	dstW = calc_size(srcW, mnW);
+	dstH = calc_size(srcH, mnH);
 	printf("New output size: %ux%u\n", dstW, dstH);
 
 	/* Set the input/output height/width */
