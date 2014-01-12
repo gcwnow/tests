@@ -126,13 +126,50 @@ static void ipu_set_upscale_bilinear_coef(struct ipu *ipu,
 	}
 }
 
+static void ipu_set_downscale_bilinear_coef(struct ipu *ipu,
+			const struct mn *mn, unsigned int reg)
+{
+	unsigned int i, t, offset = 0, coef = 0;
+	float n_m = (float) mn->n / (float) mn->m;
+
+	for (i = 0, t = 0; i < mn->n; i++) {
+		float nt1_m = (float) (t * mn->n + 1) / (float) mn->m;
+
+		if ((unsigned int) nt1_m >= i + 1) {
+			offset++;
+			if (i < mn->n - 1)
+				continue;
+		}
+
+		float weight;
+		if (nt1_m == (float) i)
+			weight = 1.0f;
+		else
+			weight = 1.0f - nt1_m + floor((float) t * n_m);
+		t++;
+
+		if (i > 0) {
+			unsigned int value = ((coef & 0x7ff) << 6) | (offset << 1) | (i == 0);
+			printf("i=%u, t=%u, offset=%u, coef=%i, register value 0x%x\n",
+						i, t, offset, coef, value);
+
+			write_reg(ipu, reg, value);
+			usleep(1); /* a small sleep seems necessary */
+		}
+
+		offset = 1;
+		coef = roundf(512.0f * weight);
+	}
+}
+
 static void ipu_set_resize_coef(struct ipu *ipu,
 			const struct mn *mn, unsigned int reg)
 {
 	/* Only bilinear for now */
-	/* Only upscale for now */
 	if (mn->m >= mn->n) {
 		ipu_set_upscale_bilinear_coef(ipu, mn, reg);
+	} else {
+		ipu_set_downscale_bilinear_coef(ipu, mn, reg);
 	}
 }
 
