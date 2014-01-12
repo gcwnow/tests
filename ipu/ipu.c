@@ -102,14 +102,15 @@ static void ipu_set_upscale_bilinear_coef(struct ipu *ipu,
 			const struct mn *mn, unsigned int reg)
 {
 	unsigned int i, t;
-	for (i = 0, t = 1; i < mn->m; i++) {
-		float n_m = (float) mn->n / (float) mn->m;
-		float ni_m = n_m * (float) i;
-		float ni1_m = n_m * (float) (i + 1);
+	float n_m = (float) mn->n / (float) mn->m;
+	float ni_m = 0.0f;
 
+	for (i = 0, t = 1; i < mn->m; i++) {
+		float ni1_m = n_m * (float) (i + 1);
 		float weight = 1.0f - ni_m + floorf(ni_m);
 		int coef = roundf(512.0f * weight);
 		int offset = 0;
+		ni_m = ni1_m;
 
 		if (t <= (unsigned int) ni1_m) {
 			offset = 1;
