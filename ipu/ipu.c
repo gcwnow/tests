@@ -98,27 +98,27 @@ static unsigned int calc_size(unsigned int src, const struct mn *mn)
 	return size + (tmp != (float) (src - 1)) + (mn->m >= mn->n);
 }
 
-/* XXX: Works good with some values but bad with others :/ */
 static void ipu_set_upscale_bilinear_coef(struct ipu *ipu,
 			const struct mn *mn, unsigned int reg)
 {
-	unsigned int i, t, prev = 0;
-	for (i = 0, t = 0; i < mn->m; i++) {
-		float ni_m = (float) (mn->n * i) / (float) mn->m;
+	unsigned int i, t;
+	for (i = 0, t = 1; i < mn->m; i++) {
+		float n_m = (float) mn->n / (float) mn->m;
+		float ni_m = n_m * (float) i;
+		float ni1_m = n_m * (float) (i + 1);
+
 		float weight = 1.0f - ni_m + floorf(ni_m);
 		int coef = roundf(512.0f * weight);
-		int offset = (i == mn->m - 1) ? 1 : prev;
+		int offset = 0;
 
-		if (t <= (unsigned int) ni_m) {
-			prev = 1;
+		if (t <= (unsigned int) ni1_m) {
+			offset = 1;
 			t++;
-		} else {
-			prev = 0;
 		}
 
 		unsigned int value = ((coef & 0x7ff) << 6) | (offset << 1) | (i == 0);
-		printf("i=%u, t=%u, offset=%u, in=%u, coef=%i, register value 0x%x\n",
-					i, t, offset, prev, coef, value);
+		printf("i=%u, t=%u, offset=%u, coef=%i, register value 0x%x\n",
+					i, t, offset, coef, value);
 
 		write_reg(ipu, reg, value);
 		usleep(1); /* a small sleep seems necessary */
