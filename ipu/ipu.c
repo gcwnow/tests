@@ -1,5 +1,4 @@
 #include "ipu.h"
-#include "ratios.h"
 
 #include <fcntl.h>
 #include <math.h>
@@ -19,6 +18,10 @@ struct ipu {
 	void *base;
 	unsigned long fb;
 	int dev_mem_fd;
+};
+
+struct fraction {
+	unsigned int num, denom;
 };
 
 static struct ipu *ipu;
@@ -71,41 +74,40 @@ static void ipu_stop(struct ipu *ipu, int force)
 	write_reg(ipu, REG_CTRL, IPU_CTRL_RST);
 }
 
-static const struct mn *find_mn(float ratio)
+static unsigned int get_gcd(unsigned int a, unsigned int b)
 {
-	unsigned int i, idx = 0;
-	float min = 100.0f;
-
-	for (i = 0; i < sizeof(ipu_ratio_table) / sizeof(struct mn); i++) {
-		float diff = ipu_ratio_table[i].ratio - ratio;
-		if (diff < 0)
-			diff = -diff;
-		if (diff < min) {
-			min = diff;
-			idx = i;
-		}
+	unsigned int c;
+	while (a > 0) {
+		c = a;
+		a = b % a;
+		b = c;
 	}
-
-	printf("N/M found for ratio %f: %u/%u, idx=%u\n",
-				ratio, ipu_ratio_table[idx].n, ipu_ratio_table[idx].m, idx);
-	return &ipu_ratio_table[idx];
+	return b;
 }
 
-static unsigned int calc_size(unsigned int src, const struct mn *mn)
+static void reduce_fraction(struct fraction *f)
 {
-	unsigned int size = (float) ((src - 1) * mn->m) / (float) mn->n;
-	float tmp = (float) (size * mn->n) / (float) mn->m;
-	return size + (tmp != (float) (src - 1)) + (mn->m >= mn->n);
+	unsigned int gcd = get_gcd(f->num, f->denom);
+
+	f->num /= gcd;
+	f->denom /= gcd;
+}
+
+static unsigned int calc_size(unsigned int src, const struct fraction *frac)
+{
+	unsigned int size = (float) ((src - 1) * frac->num) / (float) frac->denom;
+	float tmp = (float) (size * frac->denom) / (float) frac->num;
+	return size + (tmp != (float) (src - 1)) + (frac->num >= frac->denom);
 }
 
 static void ipu_set_upscale_bilinear_coef(struct ipu *ipu,
-			const struct mn *mn, unsigned int reg)
+			const struct fraction *frac, unsigned int reg)
 {
 	unsigned int i, t;
-	float n_m = (float) mn->n / (float) mn->m;
+	float n_m = (float) frac->denom / (float) frac->num;
 	float ni_m = 0.0f;
 
-	for (i = 0, t = 1; i < mn->m; i++) {
+	for (i = 0, t = 1; i < frac->num; i++) {
 		float ni1_m = n_m * (float) (i + 1);
 		float weight = 1.0f - ni_m + floorf(ni_m);
 		int coef = roundf(512.0f * weight);
@@ -127,17 +129,17 @@ static void ipu_set_upscale_bilinear_coef(struct ipu *ipu,
 }
 
 static void ipu_set_downscale_bilinear_coef(struct ipu *ipu,
-			const struct mn *mn, unsigned int reg)
+			const struct fraction *frac, unsigned int reg)
 {
 	unsigned int i, t, offset = 0, coef = 0;
-	float n_m = (float) mn->n / (float) mn->m;
+	float n_m = (float) frac->denom / (float) frac->num;
 
-	for (i = 0, t = 0; i < mn->n; i++) {
-		float nt1_m = (float) (t * mn->n + 1) / (float) mn->m;
+	for (i = 0, t = 0; i < frac->denom; i++) {
+		float nt1_m = (float) (t * frac->denom + 1) / (float) frac->num;
 
 		if ((unsigned int) nt1_m >= i + 1) {
 			offset++;
-			if (i < mn->n - 1)
+			if (i < frac->denom - 1)
 				continue;
 		}
 
@@ -163,13 +165,13 @@ static void ipu_set_downscale_bilinear_coef(struct ipu *ipu,
 }
 
 static void ipu_set_resize_coef(struct ipu *ipu,
-			const struct mn *mn, unsigned int reg)
+			const struct fraction *frac, unsigned int reg)
 {
 	/* Only bilinear for now */
-	if (mn->m >= mn->n) {
-		ipu_set_upscale_bilinear_coef(ipu, mn, reg);
+	if (frac->num >= frac->denom) {
+		ipu_set_upscale_bilinear_coef(ipu, frac, reg);
 	} else {
-		ipu_set_downscale_bilinear_coef(ipu, mn, reg);
+		ipu_set_downscale_bilinear_coef(ipu, frac, reg);
 	}
 }
 
@@ -178,29 +180,27 @@ static void ipu_set_resize_params(struct ipu *ipu,
 			unsigned int dstW, unsigned int dstH,
 			unsigned int bytes_per_pixel)
 {
-	const struct mn *mnW, *mnH;
+	struct fraction fracW = { .num = dstW, .denom = srcW },
+	                fracH = { .num = dstH, .denom = srcH };
 	uint32_t coef_index = 0;
 
-	if (srcW == dstW) {
-		mnW = &ipu_ratio_table[0];
-	} else {
-		mnW = find_mn((float) dstW / (float) srcW);
+	reduce_fraction(&fracW);
+	reduce_fraction(&fracH);
+	printf("Width  resizing fraction: %2u/%2u\n", fracW.num, fracW.denom);
+	printf("Height resizing fraction: %2u/%2u\n", fracH.num, fracH.denom);
 
-		/* Set the resize coefficients */
-		ipu_set_resize_coef(ipu, mnW, REG_HRSZ_COEF_LUT);
-		coef_index = ((((mnW->m >= mnW->n) ? mnW->m : mnW->n) - 1) << 16);
+	if (srcW != dstW) {
+		/* Set the horizontal resize coefficients */
+		ipu_set_resize_coef(ipu, &fracW, REG_HRSZ_COEF_LUT);
+		coef_index = (((fracW.num >= fracW.denom) ? fracW.num : fracW.denom) - 1) << 16;
 
 		set_bit(ipu, REG_CTRL, IPU_CTRL_HRSZ_EN);
 	}
 
-	if (srcH == dstH) {
-		mnH = &ipu_ratio_table[0];
-	} else {
-		mnH = find_mn((float) dstH / (float) srcH);
-
-		/* Set the resize coefficients */
-		ipu_set_resize_coef(ipu, mnH, REG_VRSZ_COEF_LUT);
-		coef_index |= ((mnW->m >= mnW->n) ? mnH->m : mnH->n) - 1;
+	if (srcH != dstH) {
+		/* Set the vertical resize coefficients */
+		ipu_set_resize_coef(ipu, &fracH, REG_VRSZ_COEF_LUT);
+		coef_index |= ((fracH.num >= fracH.denom) ? fracH.num : fracH.denom) - 1;
 
 		set_bit(ipu, REG_CTRL, IPU_CTRL_VRSZ_EN);
 	}
@@ -209,8 +209,8 @@ static void ipu_set_resize_params(struct ipu *ipu,
 	write_reg(ipu, REG_RSZ_COEF_INDEX, coef_index);
 
 	/* Calculate valid W/H parameters */
-	dstW = calc_size(srcW, mnW);
-	dstH = calc_size(srcH, mnH);
+	dstW = calc_size(srcW, &fracW);
+	dstH = calc_size(srcH, &fracH);
 	printf("New output size: %ux%u\n", dstW, dstH);
 
 	/* Set the input/output height/width */
