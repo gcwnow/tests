@@ -5,6 +5,8 @@
 #include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -95,72 +97,84 @@ static void reduce_fraction(struct fraction *f)
 
 static unsigned int calc_size(unsigned int src, const struct fraction *frac)
 {
-	unsigned int size = (float) ((src - 1) * frac->num) / (float) frac->denom;
-	float tmp = (float) (size * frac->denom) / (float) frac->num;
-	return size + (tmp != (float) (src - 1)) + (frac->num >= frac->denom);
+	// One more if upscaling; one more to round up a fractional pixel.
+	return (src - 1) * frac->num / frac->denom
+		+ (frac->num >= frac->denom)
+		+ (((src - 1) * frac->num / frac->denom) * frac->denom / frac->num != src - 1);
 }
 
 static void ipu_set_upscale_bilinear_coef(struct ipu *ipu,
 			const struct fraction *frac, unsigned int reg)
 {
-	unsigned int i, t;
-	float n_m = (float) frac->denom / (float) frac->num;
-	float ni_m = 0.0f;
+	unsigned int add = frac->denom, i;
+	struct fraction weight_frac = { .num = 0, .denom = frac->num };
 
-	for (i = 0, t = 1; i < frac->num; i++) {
-		float ni1_m = n_m * (float) (i + 1);
-		float weight = 1.0f - ni_m + floorf(ni_m);
-		int coef = roundf(512.0f * weight);
-		int offset = 0;
-		ni_m = ni1_m;
+	for (i = 0; i < frac->num; i++) {
+		unsigned int weight = 512 - 512 * weight_frac.num / weight_frac.denom;
+		unsigned int offset = 0;
+		weight_frac.num += add;
 
-		if (t <= (unsigned int) ni1_m) {
+		if (weight_frac.num >= weight_frac.denom) {
 			offset = 1;
-			t++;
+			weight_frac.num -= weight_frac.denom;
 		}
 
-		unsigned int value = ((coef & 0x7ff) << 6) | (offset << 1) | (i == 0);
-		printf("i=%u, t=%u, offset=%u, coef=%i, register value 0x%x\n",
-					i, t, offset, coef, value);
+		uint32_t value = ((weight & 0x7FF) << 6) | (offset << 1) | (i == 0);
+		printf("Writing 0x%08" PRIX32 " (coefficient %u, offset %u) to %s\n",
+					value, weight, offset, reg_names[reg / sizeof(uint32_t)]);
 
 		write_reg(ipu, reg, value);
 		usleep(1); /* a small sleep seems necessary */
 	}
 }
 
+/*
+ * Sets up the IPU to downscale an image with bilinear resampling.
+ * If the scaling fraction >= 1/2, each input pixel is used at least once.
+ * If the scaling fraction < 1/2, not all input pixels are used, and it is
+ * possible that the pixels read from each group of input pixels are more
+ * to the left than expected. This is due to the scaling coefficients not
+ * supporting specifying an offset for the first pixel, only those after it.
+ *
+ * The input pixels to use for each output pixel are calculated from the
+ * middle of each output pixel.
+ *
+ * IN:
+ *   ipu: Pointer to IPU registers.
+ *   frac: Pointer to downscaling fraction. src * frac->num / frac->denom
+ *     == dst.
+ *   reg: The register number to write. This is either REG_HRSZ_COEF_LUT or
+ *     REG_VRSZ_COEF_LUT.
+ */
 static void ipu_set_downscale_bilinear_coef(struct ipu *ipu,
 			const struct fraction *frac, unsigned int reg)
 {
-	unsigned int i, t, offset = 0, coef = 0;
-	float n_m = (float) frac->denom / (float) frac->num;
+	unsigned int add = frac->denom * 2, i;
+	struct fraction weight_frac = { .num = frac->denom, .denom = frac->num * 2 };
 
-	for (i = 0, t = 0; i < frac->denom; i++) {
-		float nt1_m = (float) (t * frac->denom + 1) / (float) frac->num;
+	for (i = 0; i < frac->num; i++) {
+		weight_frac.num = weight_frac.denom / 2
+					+ (weight_frac.num - weight_frac.denom / 2) % weight_frac.denom;
 
-		if ((unsigned int) nt1_m >= i + 1) {
-			offset++;
-			if (i < frac->denom - 1)
-				continue;
-		}
+		/*
+		 * Here, "input pixel 1.0" means half of 0 and half of 1;
+		 * "input pixel 0.5" means all of 0; and
+		 * "input pixel 1.49" means almost all of 1.
+		 */
+		unsigned int weight = 512
+					- (512 * (weight_frac.num - weight_frac.denom / 2)
+					   / weight_frac.denom);
+		weight_frac.num += add;
 
-		float weight;
-		if (nt1_m == (float) i)
-			weight = 1.0f;
-		else
-			weight = 1.0f - nt1_m + floor((float) t * n_m);
-		t++;
+		unsigned int offset = (weight_frac.num - weight_frac.denom / 2)
+				/ weight_frac.denom;
 
-		if (i > 0) {
-			unsigned int value = ((coef & 0x7ff) << 6) | (offset << 1) | (i == 0);
-			printf("i=%u, t=%u, offset=%u, coef=%i, register value 0x%x\n",
-						i, t, offset, coef, value);
+		uint32_t value = ((weight & 0x7FF) << 6) | (offset << 1) | (i == 0);
+		printf("Writing 0x%08" PRIX32 " (coefficient %u, offset %u) to %s\n",
+					value, weight, offset, reg_names[reg / sizeof(uint32_t)]);
 
-			write_reg(ipu, reg, value);
-			usleep(1); /* a small sleep seems necessary */
-		}
-
-		offset = 1;
-		coef = roundf(512.0f * weight);
+		write_reg(ipu, reg, value);
+		usleep(1); /* a small sleep seems necessary */
 	}
 }
 
@@ -192,7 +206,7 @@ static void ipu_set_resize_params(struct ipu *ipu,
 	if (srcW != dstW) {
 		/* Set the horizontal resize coefficients */
 		ipu_set_resize_coef(ipu, &fracW, REG_HRSZ_COEF_LUT);
-		coef_index = (((fracW.num >= fracW.denom) ? fracW.num : fracW.denom) - 1) << 16;
+		coef_index = (fracW.num - 1) << 16;
 
 		set_bit(ipu, REG_CTRL, IPU_CTRL_HRSZ_EN);
 	}
@@ -200,7 +214,7 @@ static void ipu_set_resize_params(struct ipu *ipu,
 	if (srcH != dstH) {
 		/* Set the vertical resize coefficients */
 		ipu_set_resize_coef(ipu, &fracH, REG_VRSZ_COEF_LUT);
-		coef_index |= ((fracH.num >= fracH.denom) ? fracH.num : fracH.denom) - 1;
+		coef_index |= fracH.num - 1;
 
 		set_bit(ipu, REG_CTRL, IPU_CTRL_VRSZ_EN);
 	}
