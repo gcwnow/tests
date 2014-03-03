@@ -84,4 +84,9 @@ static const char * reg_names[] = {
 	"REG_OUT_PHY_T_ADDR",
 };
 
+enum ipu_resize_algorithm {
+	IPU_NEAREST_NEIGHBOR,
+	IPU_BILINEAR
+};
+
 #endif /* __IPU_H__ */

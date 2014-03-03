@@ -181,7 +181,6 @@ static void ipu_set_downscale_bilinear_coef(struct ipu *ipu,
 static void ipu_set_bilinear_resize_coef(struct ipu *ipu,
 			const struct fraction *frac, unsigned int reg)
 {
-	/* Only bilinear for now */
 	if (frac->num >= frac->denom) {
 		ipu_set_upscale_bilinear_coef(ipu, frac, reg);
 	} else {
@@ -189,7 +188,30 @@ static void ipu_set_bilinear_resize_coef(struct ipu *ipu,
 	}
 }
 
-static void ipu_set_resize_params(struct ipu *ipu,
+static void ipu_set_nearest_resize_coef(struct ipu *ipu,
+			const struct fraction *frac, unsigned int reg)
+{
+	unsigned int add = frac->denom, i;
+	struct fraction weight_frac = { .num = 0, .denom = frac->num };
+
+	for (i = 0; i < frac->num; i++) {
+		const unsigned int weight = 512;
+		unsigned int offset = 0;
+		weight_frac.num += add;
+
+		offset = weight_frac.num / weight_frac.denom;
+		weight_frac.num %= weight_frac.denom;
+
+		uint32_t value = (weight << 6) | (offset << 1) | (i == 0);
+		printf("Writing 0x%08" PRIX32 " (coefficient %u, offset %u) to %s\n",
+					value, weight, offset, reg_names[reg / sizeof(uint32_t)]);
+
+		write_reg(ipu, reg, value);
+		usleep(1); /* a small sleep seems necessary */
+	}
+}
+
+static void ipu_set_resize_params(struct ipu *ipu, enum ipu_resize_algorithm algorithm,
 			unsigned int srcW, unsigned int srcH,
 			unsigned int dstW, unsigned int dstH,
 			unsigned int bytes_per_pixel)
@@ -205,7 +227,14 @@ static void ipu_set_resize_params(struct ipu *ipu,
 
 	if (srcW != dstW) {
 		/* Set the horizontal resize coefficients */
-		ipu_set_bilinear_resize_coef(ipu, &fracW, REG_HRSZ_COEF_LUT);
+		switch (algorithm) {
+		case IPU_NEAREST_NEIGHBOR:
+			ipu_set_nearest_resize_coef(ipu, &fracW, REG_HRSZ_COEF_LUT);
+			break;
+		case IPU_BILINEAR:
+			ipu_set_bilinear_resize_coef(ipu, &fracW, REG_HRSZ_COEF_LUT);
+			break;
+		}
 		coef_index = (fracW.num - 1) << 16;
 
 		set_bit(ipu, REG_CTRL, IPU_CTRL_HRSZ_EN);
@@ -213,7 +242,14 @@ static void ipu_set_resize_params(struct ipu *ipu,
 
 	if (srcH != dstH) {
 		/* Set the vertical resize coefficients */
-		ipu_set_bilinear_resize_coef(ipu, &fracH, REG_VRSZ_COEF_LUT);
+		switch (algorithm) {
+		case IPU_NEAREST_NEIGHBOR:
+			ipu_set_nearest_resize_coef(ipu, &fracH, REG_VRSZ_COEF_LUT);
+			break;
+		case IPU_BILINEAR:
+			ipu_set_bilinear_resize_coef(ipu, &fracH, REG_VRSZ_COEF_LUT);
+			break;
+		}
 		coef_index |= fracH.num - 1;
 
 		set_bit(ipu, REG_CTRL, IPU_CTRL_VRSZ_EN);
@@ -240,7 +276,7 @@ static void ipu_set_resize_params(struct ipu *ipu,
 	write_reg(ipu, REG_OUT_STRIDE, dstW * bytes_per_pixel);
 }
 
-static void ipu_reset(struct ipu *ipu,
+static void ipu_reset(struct ipu *ipu, enum ipu_resize_algorithm algorithm,
 			unsigned int srcW, unsigned int srcH,
 			unsigned int dstW, unsigned int dstH, bool swap)
 {
@@ -263,7 +299,7 @@ static void ipu_reset(struct ipu *ipu,
 
 	printf("Setting the resize params...\n");
 	/* Set the resize params */
-	ipu_set_resize_params(ipu, srcW, srcH, dstW, dstH, 4);
+	ipu_set_resize_params(ipu, algorithm, srcW, srcH, dstW, dstH, 4);
 }
 
 static void ipu_run(struct ipu *ipu)
@@ -301,7 +337,7 @@ static void ipu_run_test(struct ipu *ipu, bool swap)
 	printf("Enabling clock...\n");
 	ipu_enable_clock(ipu);
 	printf("Clock enabled. Reseting IPU...\n");
-	ipu_reset(ipu, 320, 144, 320, 240, swap);
+	ipu_reset(ipu, IPU_NEAREST_NEIGHBOR, 320, 144, 320, 240, swap);
 	printf("IPU reseted. Running IPU...\n");
 	ipu_run(ipu);
 	printf("IPU should be running now. Waiting for EOF status bit...\n");
