@@ -198,6 +198,8 @@ static void ipu_set_nearest_resize_coef(struct ipu *ipu,
 	unsigned int add = frac->denom, i;
 	struct fraction weight_frac = { .num = 0, .denom = frac->num };
 
+	write_reg(ipu, reg, 0x1);
+
 	for (i = 0; i < frac->num; i++) {
 		const unsigned int weight = 512;
 		unsigned int offset = 0;
@@ -206,7 +208,7 @@ static void ipu_set_nearest_resize_coef(struct ipu *ipu,
 		offset = weight_frac.num / weight_frac.denom;
 		weight_frac.num %= weight_frac.denom;
 
-		uint32_t value = (weight << 6) | (offset << 1) | (i == 0);
+		uint32_t value = (weight << 6) | (offset << 1);
 		printf("Writing 0x%08" PRIX32 " (coefficient %u, offset %u) to %s\n",
 					value, weight, offset, reg_names[reg / sizeof(uint32_t)]);
 
