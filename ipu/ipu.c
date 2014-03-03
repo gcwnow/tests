@@ -178,7 +178,7 @@ static void ipu_set_downscale_bilinear_coef(struct ipu *ipu,
 	}
 }
 
-static void ipu_set_resize_coef(struct ipu *ipu,
+static void ipu_set_bilinear_resize_coef(struct ipu *ipu,
 			const struct fraction *frac, unsigned int reg)
 {
 	/* Only bilinear for now */
@@ -205,7 +205,7 @@ static void ipu_set_resize_params(struct ipu *ipu,
 
 	if (srcW != dstW) {
 		/* Set the horizontal resize coefficients */
-		ipu_set_resize_coef(ipu, &fracW, REG_HRSZ_COEF_LUT);
+		ipu_set_bilinear_resize_coef(ipu, &fracW, REG_HRSZ_COEF_LUT);
 		coef_index = (fracW.num - 1) << 16;
 
 		set_bit(ipu, REG_CTRL, IPU_CTRL_HRSZ_EN);
@@ -213,7 +213,7 @@ static void ipu_set_resize_params(struct ipu *ipu,
 
 	if (srcH != dstH) {
 		/* Set the vertical resize coefficients */
-		ipu_set_resize_coef(ipu, &fracH, REG_VRSZ_COEF_LUT);
+		ipu_set_bilinear_resize_coef(ipu, &fracH, REG_VRSZ_COEF_LUT);
 		coef_index |= fracH.num - 1;
 
 		set_bit(ipu, REG_CTRL, IPU_CTRL_VRSZ_EN);
