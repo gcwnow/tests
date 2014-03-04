@@ -20,6 +20,8 @@ struct ipu {
 	void *base;
 	unsigned long fb;
 	int dev_mem_fd;
+	unsigned int src_stride;
+	unsigned int dst_stride;
 };
 
 struct fraction {
@@ -281,8 +283,8 @@ static void ipu_set_resize_params(struct ipu *ipu, enum ipu_resize_algorithm alg
 				| (dstH << IN_FM_H_SFT));
 
 	/* Set the input/output stride */
-	write_reg(ipu, REG_Y_STRIDE, srcW * bytes_per_pixel);
-	write_reg(ipu, REG_OUT_STRIDE, dstW * bytes_per_pixel);
+	write_reg(ipu, REG_Y_STRIDE, ipu->src_stride);
+	write_reg(ipu, REG_OUT_STRIDE, ipu->dst_stride);
 }
 
 static void ipu_reset(struct ipu *ipu, enum ipu_resize_algorithm algorithm,
@@ -299,11 +301,11 @@ static void ipu_reset(struct ipu *ipu, enum ipu_resize_algorithm algorithm,
 
 	/* Set the input/output addresses */
 	if (swap) {
-		write_reg(ipu, REG_Y_ADDR, ipu->fb + 320 * 240 * 4);
+		write_reg(ipu, REG_Y_ADDR, ipu->fb + 240 * ipu->src_stride);
 		write_reg(ipu, REG_OUT_ADDR, (uint32_t) ipu->fb);
 	} else {
 		write_reg(ipu, REG_Y_ADDR, (uint32_t) ipu->fb);
-		write_reg(ipu, REG_OUT_ADDR, ipu->fb + 320 * 240 * 4);
+		write_reg(ipu, REG_OUT_ADDR, ipu->fb + 240 * ipu->dst_stride);
 	}
 
 	printf("Setting the resize params...\n");
@@ -430,6 +432,7 @@ int main(void)
 
 	ipu->base = addr;
 	ipu->fb = fbinfo.smem_start;
+	ipu->src_stride = ipu->dst_stride = fbinfo.line_length;
 	ipu->dev_mem_fd = fd;
 
 	printf("Framebuffer physical address: 0x%lx\n", fbinfo.smem_start);
