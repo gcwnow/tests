@@ -291,8 +291,6 @@ static void ipu_reset(struct ipu *ipu, enum ipu_resize_algorithm algorithm,
 			unsigned int srcW, unsigned int srcH,
 			unsigned int dstW, unsigned int dstH, bool swap)
 {
-	ipu_stop(ipu, 0);
-
 	/* Enable the chip and packed mode */
 	write_reg(ipu, REG_CTRL, IPU_CTRL_CHIP_EN | IPU_CTRL_SPKG_SEL);
 
@@ -320,8 +318,7 @@ static void ipu_run(struct ipu *ipu)
 
 static void ipu_control_clock(struct ipu *ipu, int enable)
 {
-	if (enable)
-		ipu_stop(ipu, 1);
+	ipu_stop(ipu, !!enable);
 
 	void *addr = mmap(NULL, 0x100, PROT_READ | PROT_WRITE,
 				MAP_SHARED, ipu->dev_mem_fd, JZ4770_CPM_BASE_ADDR);
