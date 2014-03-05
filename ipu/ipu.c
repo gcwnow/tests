@@ -74,8 +74,8 @@ static void ipu_stop(struct ipu *ipu, int force)
 		}
 	}
 
+	write_reg(ipu, REG_CTRL, 0);
 	write_reg(ipu, REG_STATUS, 0);
-	write_reg(ipu, REG_CTRL, IPU_CTRL_RST);
 }
 
 static unsigned int get_gcd(unsigned int a, unsigned int b)
