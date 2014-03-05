@@ -32,11 +32,20 @@ static struct ipu *ipu;
 
 static inline uint32_t read_reg(struct ipu *ipu, unsigned int reg)
 {
-	return *(volatile uint32_t *) (ipu->base + reg);
+	uint32_t result = *(volatile uint32_t *) (ipu->base + reg);
+	printf("%-19s contains       %08" PRIX32 "\n", reg_names[reg / sizeof(uint32_t)], result);
+	return result;
 }
 
 static inline void write_reg(struct ipu *ipu, unsigned int reg, uint32_t value)
 {
+	printf("%-19s being written  %08" PRIX32 "\n", reg_names[reg / sizeof(uint32_t)], value);
+	if (reg == REG_HRSZ_COEF_LUT || reg == REG_VRSZ_COEF_LUT) {
+		if (value & 1)
+			printf("%-19s                starting configuration\n", "");
+		else
+			printf("%-19s                coefficient %3u, offset +%2u\n", "", (value >> 6) & 0x7FF, (value >> 1) & 0x1F);
+	}
 	*(volatile uint32_t *) (ipu->base + reg) = value;
 }
 
@@ -54,7 +63,7 @@ static void print_regs(struct ipu *ipu)
 {
 	unsigned int i;
 	for (i = 0; i < sizeof(reg_names) / sizeof(reg_names[0]); i++) {
-		printf("%s = 0x%08x\n", reg_names[i], read_reg(ipu, i * 4));
+		read_reg(ipu, i * 4);
 	}
 }
 
@@ -125,9 +134,6 @@ static void ipu_set_upscale_bilinear_coef(struct ipu *ipu,
 		}
 
 		uint32_t value = ((weight & 0x7FF) << 6) | (offset << 1);
-		printf("Writing 0x%08" PRIX32 " (coefficient %u, offset %u) to %s\n",
-					value, weight, offset, reg_names[reg / sizeof(uint32_t)]);
-
 		write_reg(ipu, reg, value);
 		usleep(1); /* a small sleep seems necessary */
 	}
@@ -178,9 +184,6 @@ static void ipu_set_downscale_bilinear_coef(struct ipu *ipu,
 				/ weight_frac.denom;
 
 		uint32_t value = ((weight & 0x7FF) << 6) | (offset << 1);
-		printf("Writing 0x%08" PRIX32 " (coefficient %u, offset %u) to %s\n",
-					value, weight, offset, reg_names[reg / sizeof(uint32_t)]);
-
 		write_reg(ipu, reg, value);
 		usleep(1); /* a small sleep seems necessary */
 	}
@@ -214,8 +217,6 @@ static void ipu_set_nearest_resize_coef(struct ipu *ipu,
 		weight_frac.num %= weight_frac.denom;
 
 		uint32_t value = (weight << 6) | (offset << 1);
-		printf("Writing 0x%08" PRIX32 " (coefficient %u, offset %u) to %s\n",
-					value, weight, offset, reg_names[reg / sizeof(uint32_t)]);
 
 		write_reg(ipu, reg, value);
 		usleep(1); /* a small sleep seems necessary */
