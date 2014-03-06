@@ -236,43 +236,22 @@ static void ipu_set_resize_params(struct ipu *ipu, enum ipu_resize_algorithm alg
 	printf("Width  resizing fraction: %2u/%2u\n", fracW.num, fracW.denom);
 	printf("Height resizing fraction: %2u/%2u\n", fracH.num, fracH.denom);
 
-	if (srcW != dstW) {
-		/* Set the horizontal resize coefficients */
-		switch (algorithm) {
-		case IPU_NEAREST_NEIGHBOR:
-			ipu_set_nearest_resize_coef(ipu, &fracW, REG_HRSZ_COEF_LUT);
-			break;
-		case IPU_BILINEAR:
-			ipu_set_bilinear_resize_coef(ipu, &fracW, REG_HRSZ_COEF_LUT);
-			break;
-		}
-		coef_index = (fracW.num - 1) << 16;
-
-		set_bit(ipu, REG_CTRL, IPU_CTRL_HRSZ_EN);
-	}
-
-	if (srcH != dstH) {
-		/* Set the vertical resize coefficients */
-		switch (algorithm) {
-		case IPU_NEAREST_NEIGHBOR:
-			ipu_set_nearest_resize_coef(ipu, &fracH, REG_VRSZ_COEF_LUT);
-			break;
-		case IPU_BILINEAR:
-			ipu_set_bilinear_resize_coef(ipu, &fracH, REG_VRSZ_COEF_LUT);
-			break;
-		}
-		coef_index |= fracH.num - 1;
-
-		set_bit(ipu, REG_CTRL, IPU_CTRL_VRSZ_EN);
-	}
-
-	/* Set the LUT index register */
-	write_reg(ipu, REG_RSZ_COEF_INDEX, coef_index);
-
 	/* Calculate valid W/H parameters */
 	dstW = calc_size(srcW, &fracW);
 	dstH = calc_size(srcH, &fracH);
 	printf("New output size: %ux%u\n", dstW, dstH);
+
+	set_bit(ipu, REG_CTRL,
+		(srcW != dstW ? IPU_CTRL_HRSZ_EN : 0) |
+		(srcH != dstH ? IPU_CTRL_VRSZ_EN : 0));
+
+	if (srcW != dstW)
+		coef_index = (fracW.num - 1) << 16;
+	if (srcH != dstH)
+		coef_index |= fracH.num - 1;
+
+	/* Set the LUT index register */
+	write_reg(ipu, REG_RSZ_COEF_INDEX, coef_index);
 
 	/* Set the input/output height/width */
 	write_reg(ipu, REG_IN_FM_GS,
@@ -285,6 +264,30 @@ static void ipu_set_resize_params(struct ipu *ipu, enum ipu_resize_algorithm alg
 	/* Set the input/output stride */
 	write_reg(ipu, REG_Y_STRIDE, ipu->src_stride);
 	write_reg(ipu, REG_OUT_STRIDE, ipu->dst_stride);
+
+	if (srcW != dstW) {
+		/* Set the horizontal resize coefficients */
+		switch (algorithm) {
+		case IPU_NEAREST_NEIGHBOR:
+			ipu_set_nearest_resize_coef(ipu, &fracW, REG_HRSZ_COEF_LUT);
+			break;
+		case IPU_BILINEAR:
+			ipu_set_bilinear_resize_coef(ipu, &fracW, REG_HRSZ_COEF_LUT);
+			break;
+		}
+	}
+
+	if (srcH != dstH) {
+		/* Set the vertical resize coefficients */
+		switch (algorithm) {
+		case IPU_NEAREST_NEIGHBOR:
+			ipu_set_nearest_resize_coef(ipu, &fracH, REG_VRSZ_COEF_LUT);
+			break;
+		case IPU_BILINEAR:
+			ipu_set_bilinear_resize_coef(ipu, &fracH, REG_VRSZ_COEF_LUT);
+			break;
+		}
+	}
 }
 
 static void ipu_reset(struct ipu *ipu, enum ipu_resize_algorithm algorithm,
