@@ -120,8 +120,8 @@ static void ipu_set_upscale_bilinear_coef(struct ipu *ipu,
 	unsigned int add = frac->denom, i;
 	struct fraction weight_frac = { .num = 0, .denom = frac->num };
 
+	usleep(20000); /* a 20ms sleep seems necessary */
 	write_reg(ipu, reg, 0x1);
-	usleep(1); /* a small sleep seems necessary */
 
 	for (i = 0; i < frac->num; i++) {
 		unsigned int weight = 512 - 512 * weight_frac.num / weight_frac.denom;
@@ -134,8 +134,9 @@ static void ipu_set_upscale_bilinear_coef(struct ipu *ipu,
 		}
 
 		uint32_t value = ((weight & 0x7FF) << 6) | (offset << 1);
+
+		usleep(20000); /* a 20ms sleep seems necessary */
 		write_reg(ipu, reg, value);
-		usleep(1); /* a small sleep seems necessary */
 	}
 }
 
@@ -163,8 +164,8 @@ static void ipu_set_downscale_bilinear_coef(struct ipu *ipu,
 	unsigned int add = frac->denom * 2, i;
 	struct fraction weight_frac = { .num = frac->denom, .denom = frac->num * 2 };
 
+	usleep(20000); /* a 20ms sleep seems necessary */
 	write_reg(ipu, reg, 0x1);
-	usleep(1); /* a small sleep seems necessary */
 
 	for (i = 0; i < frac->num; i++) {
 		weight_frac.num = weight_frac.denom / 2
@@ -184,8 +185,9 @@ static void ipu_set_downscale_bilinear_coef(struct ipu *ipu,
 				/ weight_frac.denom;
 
 		uint32_t value = ((weight & 0x7FF) << 6) | (offset << 1);
+
+		usleep(20000); /* a 20ms sleep seems necessary */
 		write_reg(ipu, reg, value);
-		usleep(1); /* a small sleep seems necessary */
 	}
 }
 
@@ -205,8 +207,8 @@ static void ipu_set_nearest_resize_coef(struct ipu *ipu,
 	unsigned int add = frac->denom, i;
 	struct fraction weight_frac = { .num = 0, .denom = frac->num };
 
+	usleep(20000); /* a 20ms sleep seems necessary */
 	write_reg(ipu, reg, 0x1);
-	usleep(1); /* a small sleep seems necessary */
 
 	for (i = 0; i < frac->num; i++) {
 		const unsigned int weight = 512;
@@ -218,8 +220,8 @@ static void ipu_set_nearest_resize_coef(struct ipu *ipu,
 
 		uint32_t value = (weight << 6) | (offset << 1);
 
+		usleep(20000); /* a 20ms sleep seems necessary */
 		write_reg(ipu, reg, value);
-		usleep(1); /* a small sleep seems necessary */
 	}
 }
 
