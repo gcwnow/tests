@@ -108,10 +108,7 @@ static void reduce_fraction(struct fraction *f)
 
 static unsigned int calc_size(unsigned int src, const struct fraction *frac)
 {
-	// One more if upscaling; one more to round up a fractional pixel.
-	return (src - 1) * frac->num / frac->denom
-		+ (frac->num >= frac->denom)
-		+ (((src - 1) * frac->num / frac->denom) * frac->denom / frac->num != src - 1);
+	return src * frac->num / frac->denom;
 }
 
 static void ipu_set_upscale_bilinear_coef(struct ipu *ipu,
