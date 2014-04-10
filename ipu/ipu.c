@@ -318,6 +318,7 @@ static void ipu_reset(struct ipu *ipu, enum ipu_resize_algorithm algorithm,
 
 static void ipu_run(struct ipu *ipu)
 {
+	write_reg(ipu, REG_STATUS, 0);
 	set_bit(ipu, REG_CTRL, IPU_CTRL_RUN);
 }
 
