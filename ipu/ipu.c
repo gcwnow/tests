@@ -259,7 +259,7 @@ static void ipu_set_resize_params(struct ipu *ipu, enum ipu_resize_algorithm alg
 				| (srcH << IN_FM_H_SFT));
 	write_reg(ipu, REG_OUT_GS,
 				((dstW * bytes_per_pixel) << IN_FM_W_SFT)
-				| (dstH << IN_FM_H_SFT));
+				| ((dstH + 1) << IN_FM_H_SFT));
 
 	/* Set the input/output stride */
 	write_reg(ipu, REG_Y_STRIDE, ipu->src_stride);
@@ -288,7 +288,6 @@ static void ipu_set_resize_params(struct ipu *ipu, enum ipu_resize_algorithm alg
 			break;
 		}
 	}
-
 	usleep(20000); /* a 20ms sleep seems necessary */
 }
 
