@@ -288,6 +288,8 @@ static void ipu_set_resize_params(struct ipu *ipu, enum ipu_resize_algorithm alg
 			break;
 		}
 	}
+
+	usleep(20000); /* a 20ms sleep seems necessary */
 }
 
 static void ipu_reset(struct ipu *ipu, enum ipu_resize_algorithm algorithm,
