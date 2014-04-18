@@ -310,6 +310,9 @@ static void ipu_reset(struct ipu *ipu, enum ipu_resize_algorithm algorithm,
 		write_reg(ipu, REG_OUT_ADDR, ipu->fb + 240 * ipu->dst_stride);
 	}
 
+	/* A tiny sleep here prevents an ocasional hang */
+	usleep(1);
+
 	printf("Setting the resize params...\n");
 	/* Set the resize params */
 	ipu_set_resize_params(ipu, algorithm, srcW, srcH, dstW, dstH, 4);
